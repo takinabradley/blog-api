@@ -12,8 +12,8 @@ const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt')
 const cookieParser = require('cookie-parser')
 const logger = require('morgan')
 const debug = require('debug')
-const cors = require('cors')
 const helmet = require('helmet')
+const cors = require('cors')
 const { rateLimit } = require('express-rate-limit')
 const RateLimitMongoStore = require('rate-limit-mongo')
 
@@ -24,7 +24,10 @@ const appDebugger = debug('blog-api:app')
 mongoose
   .connect(process.env.MONGO_DEV_URL || process.env.MONGO_PROD_URL || '')
   .then((_) => appDebugger('successfully connected'))
-  .catch((_) => appDebugger('failed to connect'))
+  .catch((_) => {
+    appDebugger('failed to connect')
+    process.exit()
+  })
 
 // passport configuration
 /*
@@ -53,15 +56,17 @@ const passportJWTOptions = {
   // Authorization: Bearer <token>
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
   secretOrKey: publicKey,
-  algorithms: ['RS256']
+  algorithms: ['RS256'],
+  passReqToCallback: true
 }
 
 passport.use(
-  new JwtStrategy(passportJWTOptions, async (jwtPayload, done) => {
+  new JwtStrategy(passportJWTOptions, async (req, jwtPayload, done) => {
     try {
       const user = await User.findOne({ _id: jwtPayload.sub })
       if (user) {
         // no error, and a user was found
+        req.user = user
         done(null, user)
       } else {
         // no error, and a user wansn't found
@@ -76,6 +81,12 @@ passport.use(
 
 // express app
 const app = express()
+
+app.use(cors({
+  origin: ['http://127.0.0.1:8080', 'http://localhost:5173', 'https://codepen.io', 'http://localhost:5174'],
+  optionsSuccessStatus: 200
+}))
+
 app.use(logger('dev'))
 app.use(helmet())
 app.use(express.json())
@@ -83,6 +94,6 @@ app.use(express.urlencoded({ extended: false }))
 app.use(cookieParser())
 app.use(express.static(path.join(__dirname, 'public')))
 
-app.use('/', routes.api)
+app.use('/api', routes.api)
 
 module.exports = app
